@@ -1,0 +1,66 @@
+import weibo
+import json
+import psycopg2
+import time
+import random
+
+def insertIntoDB(id,status):
+    try:
+        cur.execute('''insert into test(id,status) values(%s,%s);''',(id,json.dumps(status)))
+    except Exception,e:
+        dblog.write(time.strftime(ISOTIMEFORMAT,time.localtime())+str(e)+'\n')
+        conn.commit()
+    else:
+        dblog.write(time.strftime(ISOTIMEFORMAT,time.localtime())+' '+id+'\n')
+    
+def getNearByWeibo(api,lat,long,range,starttime,endtime):      
+    page = 1
+    id_list = []
+    while True:
+        try:
+            current = api.place__nearby_timeline(lat=lat,long=long,range=range,count=50,page=page,starttime=starttime,endtime=endtime)
+            if current == []:
+                apilog.write(time.strftime(ISOTIMEFORMAT,time.localtime())+' '+str(lat)+','+str(long)+' ' +'finish!\n')
+                conn.commit()
+                return
+            for status in current['statuses']:
+                status_id = str(status['id'])
+                if status_id not in id_list:
+                    id_list.append(status_id)
+                    insertIntoDB(status_id,status)
+                    #cur.execute('''insert into test(id,status) values(%s,%s);''',(str(status['id']),json.dumps(status)))
+                else:
+                    pass
+        except Exception,e:
+            apilog.write(time.strftime(ISOTIMEFORMAT,time.localtime())+str(e)+'\n')
+        else:
+            apilog.writelines(time.strftime(ISOTIMEFORMAT,time.localtime())+' '+str(lat)+','+str(long)+' '+str(page)+'\n')
+            page = page + 1
+def getAllWeibo(geoPath,api,st=time.time()-86400,et=time.time()):
+    f = open(geoPath,'r')
+    for i in f.readlines():
+        lat = float(i.split(',')[0])
+        long = float(i.split(',')[1])
+        range = 2000
+        time.sleep(random.randint(1,10)) 
+        getNearByWeibo(api,lat,long,range,st,et)
+
+APP_KEY = '***'
+MY_APP_SECRET = '***'
+REDIRECT_URL = '***' 
+dblog = open('dblog.txt','w')
+apilog = open('apilog.txt','w')
+ISOTIMEFORMAT='%Y-%m-%d %X'
+access = open('access.txt','r')
+access_str = access.readline()
+access.close()
+access_token = access_str.split(' ')[0]
+expires_in = access_str.split(' ')[1]
+api = weibo.APIClient(APP_KEY,MY_APP_SECRET,REDIRECT_URL)
+api.set_access_token(access_token, expires_in)
+conn = psycopg2.connect("dbname=*** user=***")
+cur = conn.cursor() 
+getAllWeibo('geo.txt',api)
+conn.close()
+dblog.close()
+apilog.close()
